@@ -1,0 +1,23 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+      nodejs: 20
+
+    commands:
+      - python --version
+      - node --version
+      - npm --version
+
+      - pip install --upgrade pip
+      - pip install -r requirements.txt
+
+      - npm install -g aws-cdk
+      - cdk --version
+
+  build:
+    commands:
+      - cdk synth
+      - cdk deploy --all --require-approval never
