@@ -31,9 +31,7 @@ class GlueStack(Stack):
             self,
             "GlueScriptsDeployment",
             sources=[
-                s3deploy.Source.asset(
-                    "glue/Scripts"
-                )
+                s3deploy.Source.asset("glue/Scripts")
             ],
             destination_bucket=glue_bucket,
             destination_key_prefix="jobs",
@@ -43,11 +41,10 @@ class GlueStack(Stack):
         # Glue Job
         # ---------------------------------------------------------
 
-        self.example_job = glue.CfnJob(
+        self.ingestion_job = glue.CfnJob(
             self,
-            "ExampleGlueJob",
+            "IngestionGlueJob",
             name="de-data-engineer-example-job",
-
             role=glue_role.role_arn,
 
             command=glue.CfnJob.JobCommandProperty(
@@ -60,14 +57,29 @@ class GlueStack(Stack):
             ),
 
             glue_version="4.0",
-
             worker_type="G.1X",
-
             number_of_workers=2,
 
-            execution_property=(
-                glue.CfnJob.ExecutionPropertyProperty(
-                    max_concurrent_runs=1,
-                )
+            execution_property=glue.CfnJob.ExecutionPropertyProperty(
+                max_concurrent_runs=1,
             ),
+
+            # ---------------------------------------------------------
+            # Default arguments passed to every job run.
+            # Individual runs can override these via script_args in
+            # the GlueJobOperator.
+            # ---------------------------------------------------------
+            default_arguments={
+                "--job-language": "python",
+                "--job-bookmark-option": "job-bookmark-enable",
+                "--enable-metrics": "true",
+                "--enable-continuous-cloudwatch-log": "true",
+                "--enable-spark-ui": "true",
+                "--spark-event-logs-path": (
+                    f"s3://{glue_bucket.bucket_name}/spark-logs/"
+                ),
+                "--TempDir": (
+                    f"s3://{glue_bucket.bucket_name}/tmp/"
+                ),
+            },
         )

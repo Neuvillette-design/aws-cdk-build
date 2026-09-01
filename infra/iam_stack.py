@@ -27,9 +27,7 @@ class IamStack(Stack):
         self.glue_role = iam.Role(
             self,
             "GlueExecutionRole",
-            assumed_by=iam.ServicePrincipal(
-                "glue.amazonaws.com"
-            ),
+            assumed_by=iam.ServicePrincipal("glue.amazonaws.com"),
             managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name(
                     "service-role/AWSGlueServiceRole"
@@ -45,17 +43,13 @@ class IamStack(Stack):
             self,
             "MwaaExecutionRole",
             assumed_by=iam.CompositePrincipal(
-                iam.ServicePrincipal(
-                    "airflow.amazonaws.com"
-                ),
-                iam.ServicePrincipal(
-                    "airflow-env.amazonaws.com"
-                ),
+                iam.ServicePrincipal("airflow.amazonaws.com"),
+                iam.ServicePrincipal("airflow-env.amazonaws.com"),
             ),
         )
 
         # ---------------------------------------------------------
-        # CloudWatch Logs permissions
+        # CloudWatch Logs
         # ---------------------------------------------------------
 
         self.mwaa_role.add_to_policy(
@@ -76,9 +70,7 @@ class IamStack(Stack):
         )
 
         # ---------------------------------------------------------
-        # S3 permissions
-        # Bucket-specific permissions will be added from
-        # the MWAA stack.
+        # S3 — account-level public access block check (required)
         # ---------------------------------------------------------
 
         self.mwaa_role.add_to_policy(
@@ -91,7 +83,7 @@ class IamStack(Stack):
         )
 
         # ---------------------------------------------------------
-        # Glue permissions for Airflow -> Glue
+        # Glue — Airflow triggers Glue jobs
         # ---------------------------------------------------------
 
         self.mwaa_role.add_to_policy(
@@ -105,5 +97,78 @@ class IamStack(Stack):
                     "glue:GetJobs",
                 ],
                 resources=["*"],
+            )
+        )
+
+        # ---------------------------------------------------------
+        # MWAA service API (allows environment to call back into
+        # the MWAA control plane, e.g. CreateWebLoginToken)
+        # ---------------------------------------------------------
+
+        self.mwaa_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "airflow:PublishMetrics",
+                    "airflow:CreateWebLoginToken",
+                ],
+                resources=["*"],
+            )
+        )
+
+        # ---------------------------------------------------------
+        # SSM — required for MWAA environment startup
+        # ---------------------------------------------------------
+
+        self.mwaa_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "ssm:GetParameter",
+                ],
+                resources=["*"],
+            )
+        )
+
+        # ---------------------------------------------------------
+        # SQS — MWAA uses SQS internally for task queuing
+        # ---------------------------------------------------------
+
+        self.mwaa_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "sqs:ChangeMessageVisibility",
+                    "sqs:DeleteMessage",
+                    "sqs:GetQueueAttributes",
+                    "sqs:GetQueueUrl",
+                    "sqs:ReceiveMessage",
+                    "sqs:SendMessage",
+                ],
+                resources=[
+                    f"arn:aws:sqs:{self.region}:*:airflow-celery-*"
+                ],
+            )
+        )
+
+        # ---------------------------------------------------------
+        # KMS — for SQS / CloudWatch encryption used by MWAA
+        # ---------------------------------------------------------
+
+        self.mwaa_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "kms:Decrypt",
+                    "kms:DescribeKey",
+                    "kms:GenerateDataKey*",
+                    "kms:Encrypt",
+                ],
+                not_resources=[
+                    f"arn:aws:kms:*:{self.account}:key/*"
+                ],
+                conditions={
+                    "StringLike": {
+                        "kms:ViaService": [
+                            f"sqs.{self.region}.amazonaws.com",
+                        ]
+                    }
+                },
             )
         )
